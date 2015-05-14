@@ -20,8 +20,8 @@ import zhengfang.ZFClient;
 
 public class LoginFrame extends JFrame {
 
-	private JTextField account = new JTextField("0702110116");
-	private JPasswordField password = new JPasswordField("320586199211074855");
+	private JTextField account = new JTextField("1080613425");
+	private JPasswordField password = new JPasswordField("321284199505292219");
 	private JLabel checkCodeImage = new JLabel();
 	private JTextField checkCode = new JTextField(5);
 
@@ -99,7 +99,7 @@ public class LoginFrame extends JFrame {
 				try {
 					boolean ok = client.login(account.getText(),
 							password.getText());
-					ok = client.login(account.getText(), password.getText());
+					/*ok = client.login(account.getText(), password.getText());*/
 
 					if (ok == false)
 						return;
@@ -109,7 +109,7 @@ public class LoginFrame extends JFrame {
 					System.out.println(JSONUtils.getTimeTableJson(client
 							.getTimeTable()));
 					System.out.println(JSONUtils.getReportCardJson(client
-							.getReportCard("2013-2014", "1")));
+							.getReportCard("2014-2015", "1")));
 				} catch (Exception e) {
 					// TODO 自动生成的 catch 块
 					e.printStackTrace();

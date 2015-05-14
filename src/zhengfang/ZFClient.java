@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -17,7 +18,10 @@ import org.apache.http.NameValuePair;
 import org.apache.http.client.CookieStore;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.utils.URIUtils;
+import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.message.BasicNameValuePair;
@@ -27,6 +31,9 @@ import org.apache.http.params.HttpParams;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.nodes.TextNode;
+import org.jsoup.select.Elements;
 
 import util.HTMLUtils;
 import util.HTTPUtils;
@@ -209,39 +216,34 @@ public class ZFClient {
 		params.add(new BasicNameValuePair("RadioButtonList1", "学生"));
 		HttpEntity httpEntity = new UrlEncodedFormEntity(params);
 		httpPost.setEntity(httpEntity);
-		HttpResponse getResponse = httpClient.execute(httpPost);
-        
-		//String viewState = Context.getViewState(portal);
-/*		String queryStr = String
-				.format("__VIEWSTATE=%s&TextBox1=%s&TextBox2=%s&lbLanguage=&Button1=&__EVENTVALIDATION=%s&__VIEWSTATEGENERATOR=%s",
-						viewState, account, password,this.eventValid,this.viewStateGen);*/
-		URL url = new URL(loginUrl /*+ "?" + param*/);
-		
-		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-		connection.setRequestProperty("Host", host);
-		connection.setRequestProperty("Cookie", "ASP.NET_SessionId="
-				+ sessionId); 
-		connection.setRequestProperty("accept", "*/*");
-		connection.setRequestProperty("connection", "Keep-Alive");
-		connection.setRequestProperty("user-agent",
-                "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1;SV1)");
-		// 发送POST请求必须设置如下两行
-		connection.setDoOutput(true);
-		connection.setDoInput(true);
-        // 获取URLConnection对象对应的输出流
-		PrintWriter out = new PrintWriter(connection.getOutputStream());
-        // 发送请求参数
-        //out.print(param);
-        // flush输出流的缓冲
-        out.flush();
-        
-		if (connection.getResponseCode() == 302) {
-			if (connection.getHeaderField("Location").indexOf("/xs_main.aspx?") != -1) {
-				logined = true;
-				studentInfo.setId(account);
-				return true;
-			}
+		HttpResponse getResponse = httpClient.execute(httpPost);  
+		if (getResponse.getHeaders("Location")[0].getValue().indexOf(
+				"/xs_main.aspx?") != -1) {
+			URL url = new URL("http://" + host +"/xs_main.aspx?xh="+account);
+			HttpURLConnection connection = (HttpURLConnection) url.openConnection(); 
+			connection.setRequestProperty("Cookie", "ASP.NET_SessionId="
+					+ sessionId);
+			connection.setRequestProperty("Referer", referer);  
+				InputStream is = connection.getInputStream();
+				Document document = Jsoup.parse(is, "GB2312", "");
+				Elements elements = document.getElementsByTag("span");
+				for (int i = 0; i < elements.size(); i++) {
+					Element element = elements.get(i);
+					if (element.attr("id").equals("xhxm")) {
+						TextNode tn = (TextNode)element.childNode(0);
+						
+						String[] names = tn.getWholeText().trim().split(account);
+						String name = names[1].trim().replace("同学", "");
+						studentInfo.setName(name);
+						break;
+					}
+				} 
+			logined = true;
+			studentInfo.setId(account);
+			return true;
 		}
+        
+		 
 		return false;
 	}
 
@@ -282,20 +284,31 @@ public class ZFClient {
 	 * @throws Exception
 	 */
 	public StudentInfo getStudentInfo() throws Exception {
-		URL url = new URL("http://" + host + "/xsgrxx.aspx?xh="
-				+ studentInfo.getId() + "&gnmkdm=N121501");
-		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-		connection.setRequestProperty("Host", host);
-		connection.setRequestProperty("Cookie", "ASP.NET_SessionId="
+		HttpParams httpParameters = new BasicHttpParams();
+		HttpConnectionParams.setConnectionTimeout(httpParameters, 10000);
+		HttpClient httpClient = new DefaultHttpClient(httpParameters);
+		
+		
+		List<NameValuePair> params = new ArrayList<NameValuePair>();
+		params.add(new BasicNameValuePair("xh", studentInfo.getId()));
+		params.add(new BasicNameValuePair("gnmkdm", "N121501"));
+		params.add(new BasicNameValuePair("xm", studentInfo.getName()));
+		
+		URI uri = URIUtils.createURI("http", host + "/xsgrxx.aspx", -1, "", URLEncodedUtils.format(params, "UTF-8"), null);
+		HttpGet httpGet = new HttpGet(uri);
+		httpGet.setHeader("Referer","http://" + host + "/xs_main.aspx?xh="+studentInfo.getId());
+		httpGet.setHeader("Cookie", "ASP.NET_SessionId="
 				+ sessionId);
-		connection.setRequestProperty("Referer", referer);
+		HttpResponse getResponse = httpClient.execute(httpGet);  
+		
+		HttpEntity he = getResponse.getEntity();
 
-		if (connection.getResponseCode() != 200) {
+		if (he ==null) {
 			System.out.println("获取个人信息失败");
 			return null;
 		}
 
-		HTMLUtils.parseStudentInfo(studentInfo, connection);
+		HTMLUtils.parseStudentInfo(studentInfo, he.getContent());
 		return studentInfo;
 	}
 
@@ -307,24 +320,50 @@ public class ZFClient {
 	 * @return
 	 * @throws IOException
 	 */
-	public ArrayList<TimeTableItem> getTimeTable() throws IOException {
-		URL url = new URL("http://" + host + "/xskbcx.aspx?xh="
+	public ArrayList<TimeTableItem> getTimeTable() throws Exception {
+		
+		HttpParams httpParameters = new BasicHttpParams();
+		HttpConnectionParams.setConnectionTimeout(httpParameters, 10000);
+		HttpClient httpClient = new DefaultHttpClient(httpParameters);
+		
+		
+		List<NameValuePair> params = new ArrayList<NameValuePair>();
+		params.add(new BasicNameValuePair("xh", studentInfo.getId()));
+		params.add(new BasicNameValuePair("gnmkdm", "N121603"));
+		params.add(new BasicNameValuePair("xm", studentInfo.getName()));
+		
+		URI uri = URIUtils.createURI("http", host + "/xskbcx.aspx", -1, "", URLEncodedUtils.format(params, "UTF-8"), null);
+		HttpGet httpGet = new HttpGet(uri);
+		httpGet.setHeader("Referer","http://" + host + "/xs_main.aspx?xh="+studentInfo.getId());
+		httpGet.setHeader("Cookie", "ASP.NET_SessionId="
+				+ sessionId);
+		HttpResponse getResponse = httpClient.execute(httpGet);  
+		
+		HttpEntity he = getResponse.getEntity();
+
+		if (he ==null) {
+			System.out.println("获取课程表失败");
+			return null;
+		}
+		ArrayList<TimeTableItem> timeTable = new ArrayList<TimeTableItem>();
+		HTMLUtils.parseTimeTable(timeTable, he.getContent());
+		return timeTable;
+		
+		/*URL url = new URL("http://" + host + "/xskbcx.aspx?xh="
 				+ studentInfo.getId() + "&xm=" + encode(studentInfo.getName())
 				+ "&gnmkdm=N121603");
 		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 		connection.setRequestProperty("Host", host);
 		connection.setRequestProperty("Cookie", "ASP.NET_SessionId="
 				+ sessionId);
-		connection.setRequestProperty("Referer", referer);
+		connection.setRequestProperty("Referer", "http://" + host + "/xs_main.aspx?xh="+studentInfo.getId());
 
 		if (connection.getResponseCode() != 200) {
 			System.out.println("获取课程表失败");
 			return null;
-		}
+		}*/
 
-		ArrayList<TimeTableItem> timeTable = new ArrayList();
-		HTMLUtils.parseTimeTable(timeTable, connection);
-		return timeTable;
+		
 	}
 
 	/**
@@ -337,7 +376,6 @@ public class ZFClient {
 	 */
 	public List<ReportCartItem> getReportCard(String year, String term)
 			throws Exception {
-		// 获取viewstate(不同页面的viewstate不同)
 		Connection conn = Jsoup.connect("http://" + host + "/xscjcx.aspx?xh="
 				+ studentInfo.getId() + "&xm=" + encode(studentInfo.getName())
 				+ "&gnmkdm=N121603");
@@ -348,33 +386,37 @@ public class ZFClient {
 		conn.header("Referer", referer);
 		Document document = conn.get();
 		String viewState = HTMLUtils.getViewState(document);
-		// 获取成绩单
-		URL url = new URL("http://" + host + "/xscjcx.aspx?xh="
-				+ studentInfo.getId() + "&xm=" + encode(studentInfo.getName())
-				+ "&gnmkdm=N121603");
-		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-		connection.setDoOutput(true);
-		connection.setRequestMethod("POST");
-		connection.setRequestProperty("Host", host);
-		connection.setRequestProperty("Cookie", "ASP.NET_SessionId="
+		
+		
+		HttpParams httpParameters = new BasicHttpParams();
+		HttpConnectionParams.setConnectionTimeout(httpParameters, 10000);
+		HttpClient httpClient = new DefaultHttpClient(httpParameters);
+		HttpPost httpPost = new HttpPost(loginUrl);
+		httpPost.setHeader("Referer",loginUrl);
+		httpPost.setHeader("Cookie", "ASP.NET_SessionId="
 				+ sessionId);
-		connection.setRequestProperty("Referer", referer);
-
-		String requestContent = String
-				.format("ddlXN=%s&ddlXQ=%s&btn_xq=%s&__VIEWSTATE=%s&__EVENTARGUMENT=&__EVENTTARGET=&btn_xq=&ddl_kcxz=&hidLanguage=&__VIEWSTATEGENERATOR=9727EB43",
-						year, term, encode("学期成绩"), encode(viewState));
-
-		PrintWriter writer = new PrintWriter(connection.getOutputStream());
-		writer.write(requestContent);
-		writer.flush();
-
-		if (connection.getResponseCode() != 200) {
+		
+		List<NameValuePair> params = new ArrayList<NameValuePair>();
+		params.add(new BasicNameValuePair("__VIEWSTATE", viewState));
+		params.add(new BasicNameValuePair("ddlXN", year));
+		params.add(new BasicNameValuePair("ddlXQ", term));
+		params.add(new BasicNameValuePair("btn_xq", "学期成绩"));
+		params.add(new BasicNameValuePair("ddl_kcxz", ""));
+		params.add(new BasicNameValuePair("hidLanguage", ""));
+		params.add(new BasicNameValuePair("__EVENTTARGET", ""));
+		params.add(new BasicNameValuePair("_EVENTARGUMENT", ""));
+		HttpEntity httpEntity = new UrlEncodedFormEntity(params);
+		httpPost.setEntity(httpEntity);
+		HttpResponse getResponse = httpClient.execute(httpPost);  
+		HttpEntity he = getResponse.getEntity();
+		if (he ==null) {
 			System.out.println("获取成绩失败");
 			return null;
 		}
+		 
 
-		List<ReportCartItem> reportCard = new ArrayList();
-		HTMLUtils.parseReportCard(reportCard, connection);
+		List<ReportCartItem> reportCard = new ArrayList<ReportCartItem>();
+		HTMLUtils.parseReportCard(reportCard, he.getContent());
 		return reportCard;
 	}
 

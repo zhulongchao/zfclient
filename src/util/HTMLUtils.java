@@ -2,17 +2,15 @@ package util;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.jsoup.Jsoup;
-import org.jsoup.helper.HttpConnection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.nodes.Node;
 import org.jsoup.select.Elements;
 
 import zhengfang.bean.ReportCartItem;
@@ -44,6 +42,13 @@ public class HTMLUtils {
 				"");
 		parseStudentInfo(studentInfo, document);
 	}
+	public static void parseStudentInfo(StudentInfo studentInfo,
+			InputStream is) throws IOException {
+		Document document = Jsoup.parse(is, CHARSET,
+				"");
+		parseStudentInfo(studentInfo, document);
+	}
+
 
 	/**
 	 * 从html页面中抓取学生信息
@@ -117,6 +122,12 @@ public class HTMLUtils {
 				"");
 		parseTimeTable(timeTable, document);
 	}
+	public static void parseTimeTable(List<TimeTableItem> timeTable,
+			InputStream is) throws IOException {
+		Document document = Jsoup.parse(is, CHARSET,
+				"");
+		parseTimeTable(timeTable, document);
+	}
 
 	/**
 	 * 从html页面抓取课程表
@@ -149,6 +160,13 @@ public class HTMLUtils {
 	public static void parseReportCard(List<ReportCartItem> reportCard,
 			HttpURLConnection connection) throws IOException {
 		Document document = Jsoup.parse(connection.getInputStream(), CHARSET,
+				"");
+		parseReportCard(reportCard, document);
+	}
+	
+	public static void parseReportCard(List<ReportCartItem> reportCard,
+			InputStream  is) throws IOException {
+		Document document = Jsoup.parse(is, CHARSET,
 				"");
 		parseReportCard(reportCard, document);
 	}
